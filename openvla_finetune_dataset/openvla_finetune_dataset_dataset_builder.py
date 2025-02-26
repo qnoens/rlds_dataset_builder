@@ -6,6 +6,10 @@ import tensorflow as tf
 import tensorflow_datasets as tfds
 import tensorflow_hub as hub
 
+# Added to read parquet files
+import pandas as pd
+import cv2
+
 
 class OpenvlaFinetuneDataset(tfds.core.GeneratorBasedBuilder):
     """DatasetBuilder for example dataset."""
@@ -22,30 +26,30 @@ class OpenvlaFinetuneDataset(tfds.core.GeneratorBasedBuilder):
     def _info(self) -> tfds.core.DatasetInfo:
         """Dataset metadata (homepage, citation,...)."""
         return self.dataset_info_from_configs(
-            features=tfds.features.FeaturesDict({
+            features=tfds.features.FeaturesDict({ # ['next.reward', 'next.success', 'seed', 'timestamp', 'observation.images.Camera_rgb_image', 'observation.images.ur5e_WristCamera_rgb_image','ur5e/joint_configuration', 'observation.state', 'action', 'frame_index', 'episode_index', 'index', 'task_index']
                 'steps': tfds.features.Dataset({
                     'observation': tfds.features.FeaturesDict({
                         'image': tfds.features.Image(
-                            shape=(64, 64, 3),
+                            shape=(224, 224, 3),
                             dtype=np.uint8,
                             encoding_format='png',
                             doc='Main camera RGB observation.',
                         ),
                         'wrist_image': tfds.features.Image(
-                            shape=(64, 64, 3),
+                            shape=(224, 224, 3),
                             dtype=np.uint8,
                             encoding_format='png',
                             doc='Wrist camera RGB observation.',
                         ),
                         'state': tfds.features.Tensor(
-                            shape=(10,),
+                            shape=(6,),
                             dtype=np.float32,
                             doc='Robot state, consists of [7x robot joint angles, '
                                 '2x gripper position, 1x door opening angle].',
                         )
                     }),
                     'action': tfds.features.Tensor(
-                        shape=(10,),
+                        shape=(7,),
                         dtype=np.float32,
                         doc='Robot action, consists of [7x joint velocities, '
                             '2x gripper velocities, 1x terminate episode].',
@@ -79,10 +83,43 @@ class OpenvlaFinetuneDataset(tfds.core.GeneratorBasedBuilder):
                         doc='Kona language embedding. '
                             'See https://tfhub.dev/google/universal-sentence-encoder-large/5'
                     ),
+                    'seed': tfds.features.Scalar(
+                        dtype=np.int64,
+                        doc='Seed used (added)'
+                    ),
+                    'timestamp': tfds.features.Scalar(
+                        dtype=np.float32,
+                        doc='Seed used (added)'
+                    ),
+                    'joint_configuration': tfds.features.Tensor(
+                        shape=(6,),
+                        dtype=np.float32,
+                        doc='Joint configuration of robot (added)',
+                    ),
+                    'frame_index': tfds.features.Scalar(
+                        dtype=np.int64,
+                        doc='Frame index (added)',
+                    ),
+                    'success': tfds.features.Scalar(
+                        dtype=np.bool_,
+                        doc='True if episode was successful (added)',
+                    ),
+                    'index': tfds.features.Scalar(
+                        dtype=np.int64,
+                        doc='Index of current step (added)',
+                    ),
                 }),
                 'episode_metadata': tfds.features.FeaturesDict({
                     'file_path': tfds.features.Text(
                         doc='Path to the original data file.'
+                    ),
+                    'episode_index': tfds.features.Scalar(
+                        dtype=np.int64,
+                        doc='Episode index (added)',
+                    ),
+                    'task_index': tfds.features.Scalar(
+                        dtype=np.int64,
+                        doc='Task index (added)',
                     ),
                 }),
             }))
@@ -90,8 +127,8 @@ class OpenvlaFinetuneDataset(tfds.core.GeneratorBasedBuilder):
     def _split_generators(self, dl_manager: tfds.download.DownloadManager):
         """Define data splits."""
         return {
-            'train': self._generate_examples(path='data/train/episode_*.npy'),
-            'val': self._generate_examples(path='data/val/episode_*.npy'),
+            'train': self._generate_examples(path='/fast_storage/qnoens/OpenVLA/data/train/episode_*.parquet'),
+            'val': self._generate_examples(path='/fast_storage/qnoens/OpenVLA/data/val/episode_*.parquet'),
         }
 
     def _generate_examples(self, path) -> Iterator[Tuple[str, Any]]:
@@ -99,27 +136,48 @@ class OpenvlaFinetuneDataset(tfds.core.GeneratorBasedBuilder):
 
         def _parse_example(episode_path):
             # load raw data --> this should change for your dataset
-            data = np.load(episode_path, allow_pickle=True)     # this is a list of dicts in our case
+            #data = np.load(episode_path, allow_pickle=True)     # this is a list of dicts in our case
+            data = pd.read_parquet(episode_path, engine='pyarrow') # this is a pandas dataframe containing all the features
+
 
             # assemble episode --> here we're assuming demos so we set reward to 1 at the end
             episode = []
-            for i, step in enumerate(data):
+            data_len = data.shape[0]
+            for i in range(1, data_len):
+                step = data.loc[i]
                 # compute Kona language embedding
-                language_embedding = self._embed([step['language_instruction']])[0].numpy()
+                language_embedding = self._embed(['push the button'])[0].numpy() # not sure if this is correct; just replaced the string by step['language_instruction']
 
+                # load image
+                image_dict = step['observation.images.Camera_rgb_image']
+                image_np = np.frombuffer(image_dict['bytes'], dtype=np.uint8)
+                image = cv2.imdecode(image_np, cv2.IMREAD_COLOR)
+
+                # load wrist image
+                wrist_image_dict = step['observation.images.ur5e_WristCamera_rgb_image']
+                wrist_image_np = np.frombuffer(wrist_image_dict['bytes'], dtype=np.uint8)
+                wrist_image = cv2.imdecode(wrist_image_np, cv2.IMREAD_COLOR)
+
+                # ['episode_index', 'task_index']
                 episode.append({
                     'observation': {
-                        'image': step['image'],
-                        'wrist_image': step['wrist_image'],
-                        'state': step['state'],
+                        'image': image,
+                        'wrist_image': wrist_image,
+                        'state': step['observation.state'],
                     },
                     'action': step['action'],
                     'discount': 1.0,
-                    'reward': float(i == (len(data) - 1)),
-                    'is_first': i == 0,
-                    'is_last': i == (len(data) - 1),
-                    'is_terminal': i == (len(data) - 1),
-                    'language_instruction': step['language_instruction'],
+                    'reward': step['next.reward'],
+                    'seed': step['seed'],
+                    'timestamp': step['timestamp'],
+                    'joint_configuration': step['ur5e/joint_configuration'],
+                    'frame_index': step['frame_index'],
+                    'success': step['next.success'],
+                    'index': step['index'],
+                    'is_first': step['frame_index'] == 0,
+                    'is_last': i == (data_len - 1), #from here
+                    'is_terminal': i == (data_len - 1),
+                    'language_instruction': 'push the button', #step['language_instruction']
                     'language_embedding': language_embedding,
                 })
 
@@ -127,7 +185,9 @@ class OpenvlaFinetuneDataset(tfds.core.GeneratorBasedBuilder):
             sample = {
                 'steps': episode,
                 'episode_metadata': {
-                    'file_path': episode_path
+                    'file_path': episode_path,
+                    'episode_index': data.loc[1]['episode_index'],
+                    'task_index': data.loc[1]['task_index'],
                 }
             }
 
