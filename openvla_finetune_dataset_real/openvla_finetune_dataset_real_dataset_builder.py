@@ -11,7 +11,7 @@ from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
 
 print("imports done.")
 
-root_dir = '/fast_storage/qnoens/OpenVLA/data/lerobot_task1'
+root_dir = '/fast_storage/qnoens/OpenVLA/data/lerobot_blue_only_zero_actions2'
 dataset_name = 'test_dataset'
 
 dataset = LeRobotDataset(repo_id=dataset_name, root=root_dir)
@@ -134,7 +134,7 @@ class OpenvlaFinetuneDatasetReal(tfds.core.GeneratorBasedBuilder):
     def _split_generators(self, dl_manager: tfds.download.DownloadManager):
         """Define data splits."""
         return {
-            'train': self._generate_examples(path='/fast_storage/qnoens/OpenVLA/data/lerobot_task1/data/chunk-000/episode_*.parquet'),
+            'train': self._generate_examples(path='/fast_storage/qnoens/OpenVLA/data/lerobot_blue_only_zero_actions2/data/chunk-000/episode_*.parquet'),
             #'val': self._generate_examples(path='/fast_storage/qnoens/OpenVLA/data/full_lerobot_task1/data/chunk-000/episode_*.parquet'),
         }
     
@@ -150,9 +150,9 @@ class OpenvlaFinetuneDatasetReal(tfds.core.GeneratorBasedBuilder):
             logging.info(f"Parsing episode {ep_idx} from {episode_path}")
 
             # Last workaround I can think of: take the orginal datasets whithout the deletes, this should cause no issues. Fix issue during training...
-            if ep_idx in [31, 32, 33, 34, 35, 36, 37, 38, 65, 74, 91]:
-                logging.info(f"Skipping episode {ep_idx} because it is deleted.")
-                return None, None
+            # if ep_idx in [31, 32, 33, 34, 35, 36, 37, 38, 65, 74, 91]:
+            #     logging.info(f"Skipping episode {ep_idx} because it is deleted.")
+            #     return None, None
 
 
             meta = dataset.meta
@@ -232,80 +232,4 @@ class OpenvlaFinetuneDatasetReal(tfds.core.GeneratorBasedBuilder):
                 logging.info(f"Skipping...")
                 continue
             yield episode_path, sample
-
-    # Old function
-    # def _generate_examples(self, path) -> Iterator[Tuple[str, Any]]:
-    #     """Generator of examples for each split."""
-    #     episode_paths = glob.glob(path)
-
-
-    #     # Load LeRobot dataset
-    #     root_dir = '/fast_storage/qnoens/OpenVLA/data/full_lerobot_task1'
-    #     dataset_name = 'test_dataset'
-
-    #     dataset = LeRobotDataset(repo_id=dataset_name, root=root_dir)
-
-    #     print("Dataset loaded.")
-
-    #     meta = dataset.meta
-    #     number_of_episodes = len(meta.episodes)
-
-    #     # Initialize loop
-    #     episode = []
-    #     frame_nr = 0
-    #     print("starting to loop through data...")
-    #     for ep_idx in range(number_of_episodes):
-    #         for i in range(meta.episodes[ep_idx]["length"]):
-    #             frame = dataset[frame_nr]
-
-    #             # All the data conversion happens here
-    #             # Scene image
-    #             scene_image = frame["scene_image"]
-    #             scene_image = scene_image.permute(1, 2, 0).numpy()
-    #             scene_image = (scene_image * 255).astype(np.uint8)
-
-    #             # Wrist image
-    #             wrist_image = frame["wrist_image"]
-    #             wrist_image = wrist_image.permute(1, 2, 0).numpy()
-    #             wrist_image = (wrist_image * 255).astype(np.uint8)
-
-    #             language_instruction = meta.episodes[ep_idx]["tasks"][0]
-    #             language_embedding = self._embed([language_instruction])[0].numpy()
-
-    #             episode.append({
-    #                 'observation': {
-    #                     'image': scene_image,
-    #                     'wrist_image': wrist_image,
-    #                     'state': frame['state'],
-    #                 },
-    #                 'action': frame['action'],
-    #                 'discount': 1.0,
-    #                 'reward': frame['next.reward'],
-    #                 'seed': frame['seed'],
-    #                 'timestamp': frame['timestamp'],
-    #                 'frame_index': frame['frame_index'],
-    #                 'success': frame['next.success'],
-    #                 'index': frame['index'],
-    #                 'is_first': frame['frame_index'] == 0,
-    #                 'is_last': i == (meta.episodes[ep_idx]["length"] - 1), 
-    #                 'is_terminal': i == (meta.episodes[ep_idx]["length"] - 1),
-    #                 'language_instruction': language_instruction,
-    #                 'language_embedding': language_embedding,
-    #             })
-
-    #             frame_nr += 1
-
-    #         # create output data sample
-    #         sample = {
-    #             'steps': episode,
-    #             'episode_metadata': {
-    #                 'file_path': episode_paths[ep_idx],
-    #                 'episode_index': ep_idx,
-    #                 'task_index': meta.get_task_index(language_instruction),
-    #             }
-    #         }
-
-    #         print(f"Yielding episode {ep_idx} with {len(episode)} steps.")
-    #         yield episode_paths[ep_idx], sample
-
 
