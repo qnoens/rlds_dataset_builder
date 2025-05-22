@@ -11,7 +11,7 @@ from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
 
 print("imports done.")
 
-root_dir = '/fast_storage/qnoens/OpenVLA/data/lerobot_blue_only_zero_actions2'
+root_dir = '/fast_storage/qnoens/data/lerobot/block2target_200'
 dataset_name = 'test_dataset'
 
 dataset = LeRobotDataset(repo_id=dataset_name, root=root_dir)
@@ -134,7 +134,7 @@ class OpenvlaFinetuneDatasetReal(tfds.core.GeneratorBasedBuilder):
     def _split_generators(self, dl_manager: tfds.download.DownloadManager):
         """Define data splits."""
         return {
-            'train': self._generate_examples(path='/fast_storage/qnoens/OpenVLA/data/lerobot_blue_only_zero_actions2/data/chunk-000/episode_*.parquet'),
+            'train': self._generate_examples(path='/fast_storage/qnoens/data/lerobot/block2target_200/data/chunk-000/episode_*.parquet'),
             #'val': self._generate_examples(path='/fast_storage/qnoens/OpenVLA/data/full_lerobot_task1/data/chunk-000/episode_*.parquet'),
         }
     
